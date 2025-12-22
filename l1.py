@@ -108,7 +108,7 @@ def explicit_scheme(Nx: int, Nt: int, save_all_steps: bool = False) -> Tuple[np.
     
     # Инициализация решения
     if save_all_steps:
-        u = np.zeros((Nt + 1, Nx + 1))
+        u = np.zeros((Nt + 1, Nx + 1), dtype=np.float128)
         u[0, :] = initial_condition(x)
     else:
         u_prev = initial_condition(x)
@@ -639,7 +639,7 @@ def apply_boundary_conditions(u, h, bc_type, bc_value, method='two_point_first')
 
 def main():
     # Параметры для базового расчета
-    Nx_base, Nt_base = 50, 500
+    Nx_base, Nt_base = 10, 500
     
     print(f"\nБазовый расчет на сетке Nx={Nx_base}, Nt={Nt_base}")
     print(f"Коэффициент a={a}")
