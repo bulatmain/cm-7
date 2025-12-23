@@ -28,7 +28,7 @@ def analytic_solution(x, y, t, m1, m2):
     return np.cos(m1*x) * np.cos(m2*y) * np.exp(-(m1**2 + m2**2)*a*t)
 
 # Решение для одного случая
-def solve_case(m1, m2, Nx=50, Ny=50, dt_val=0.001, save_plots=True):
+def solve_case(m1, m2, Nx=50, Ny=50, dt_val=0.001, plot=False):
     # Сетка
     dx, dy = Lx/(Nx-1), Ly/(Ny-1)
     x = np.linspace(0, Lx, Nx)
@@ -111,54 +111,31 @@ def solve_case(m1, m2, Nx=50, Ny=50, dt_val=0.001, save_plots=True):
             error = np.abs(u.T - u_anal).max()
             errors.append(error)
             time_steps.append(t)
-            
-            # Визуализация в момент времени t
-            if save_plots and n % (max(1, Nt//2)) == 0:  # реже строим графики
-                fig = plt.figure(figsize=(15,5))
-                # Численное решение
-                ax1 = fig.add_subplot(131, projection='3d')
-                ax1.plot_surface(X, Y, u.T, cmap='viridis')
-                ax1.set_title(f'Численное, t={t:.2f}')
-                # Аналитическое решение
-                ax2 = fig.add_subplot(132, projection='3d')
-                ax2.plot_surface(X, Y, u_anal, cmap='plasma')
-                ax2.set_title('Аналитическое')
-                # Погрешность
-                ax3 = fig.add_subplot(133, projection='3d')
-                ax3.plot_surface(X, Y, np.abs(u.T - u_anal), cmap='hot')
-                ax3.set_title('Погрешность')
-                plt.suptitle(f'm1={m1}, m2={m2}, t={t:.2f}')
-                plt.tight_layout()
-                plt.show()
     
-    # График зависимости ошибки от времени
-    plt.figure(figsize=(8,5))
-    plt.plot(time_steps, errors, marker='o', linestyle='-', linewidth=2)
-    plt.xlabel('Время')
-    plt.ylabel('Максимальная погрешность')
-    plt.title(f'Погрешность от времени (m1={m1}, m2={m2})')
-    plt.grid(True)
-    plt.show()
-    
-    # Исследование зависимости от шагов сетки
-    if save_plots:
-        N_list = [20, 30, 50, 70]
-        errors_h = []
-        dt_list = []
-        for N in N_list:
-            dx_local = Lx/(N-1)
-            dy_local = Ly/(N-1)
-            dt_local = min(dx_local**2, dy_local**2)/4
-            dt_list.append(dt_local)
-            # Сокращенный расчет для оценки ошибки
-            u_test, err_test = solve_case(m1, m2, N, N, dt_local, save_plots=False)
-            errors_h.append(err_test)
-            
+    if plot:
+        fig = plt.figure(figsize=(15,5))
+        # Численное решение
+        ax1 = fig.add_subplot(131, projection='3d')
+        ax1.plot_surface(X, Y, u.T, cmap='viridis')
+        ax1.set_title(f'Численное, t={t:.2f}')
+        # Аналитическое решение
+        ax2 = fig.add_subplot(132, projection='3d')
+        ax2.plot_surface(X, Y, u_anal, cmap='plasma')
+        ax2.set_title('Аналитическое')
+        # Погрешность
+        ax3 = fig.add_subplot(133, projection='3d')
+        ax3.plot_surface(X, Y, np.abs(u.T - u_anal), cmap='hot')
+        ax3.set_title('Погрешность')
+        plt.suptitle(f'm1={m1}, m2={m2}, t={t:.2f}')
+        plt.tight_layout()
+        plt.show()
+        
+        # График зависимости ошибки от времени
         plt.figure(figsize=(8,5))
-        plt.loglog(N_list, errors_h, marker='s', linestyle='--', linewidth=2)
-        plt.xlabel('N (число узлов)')
-        plt.ylabel('Погрешность')
-        plt.title('Зависимость погрешности от размера сетки')
+        plt.plot(time_steps, errors, marker='o', linestyle='-', linewidth=2)
+        plt.xlabel('Время')
+        plt.ylabel('Максимальная погрешность')
+        plt.title(f'Погрешность от времени (m1={m1}, m2={m2})')
         plt.grid(True)
         plt.show()
     
@@ -169,6 +146,27 @@ cases = [(1,1), (2,1), (1,2)]
 results = []
 for m1, m2 in cases:
     print(f'Решается случай m1={m1}, m2={m2}...')
-    u_final, err = solve_case(m1, m2, save_plots=True)
+    u_final, err = solve_case(m1, m2, plot=True)
     results.append((m1, m2, err))
     print(f'Погрешность в конечный момент: {err:.2e}\n')
+
+m1=1; m2=1
+N_list = [20, 30, 50, 70]
+errors_h = []
+dt_list = []
+for N in N_list:
+    dx_local = Lx/(N-1)
+    dy_local = Ly/(N-1)
+    dt_local = min(dx_local**2, dy_local**2)/4
+    dt_list.append(dt_local)
+    # Сокращенный расчет для оценки ошибки
+    u_test, err_test = solve_case(m1, m2, N, N, dt_local, plot=False)
+    errors_h.append(err_test)
+            
+plt.figure(figsize=(8,5))
+plt.loglog(N_list, errors_h, marker='s', linestyle='--', linewidth=2)
+plt.xlabel('N (число узлов)')
+plt.ylabel('Погрешность')
+plt.title('Зависимость погрешности от размера сетки')
+plt.grid(True)
+plt.show()
