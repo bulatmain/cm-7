@@ -11,10 +11,13 @@ def analytical_solution(x, t):
     return np.sin(x - a*t) + np.cos(x + a*t)
 
 # Начальные условия
-def u0(x):
+def psi1(x):
     return np.sin(x) + np.cos(x)
 
-def du0_dt(x):
+def psi1_xx(x):
+    return -psi1(x)
+
+def psi2(x):
     return -a * (np.sin(x) + np.cos(x))
 
 # Граничные условия (условия Робина)
@@ -53,13 +56,13 @@ def explicit_cross_scheme(Nx, Nt, bc_approx='two_point_first', du_approx='first_
     u = np.zeros((Nt + 1, Nx + 1))
     
     # Начальное условие: u(x,0)
-    u[0, :] = u0(x)
+    u[0, :] = psi1(x)
     
     # Второе начальное условие: u_t(x,0)
     # Создаем слой t=1 разными методами
     if du_approx == 'first_order':
         # Первый порядок: u_t ≈ (u^1 - u^0)/tau
-        u[1, :] = u[0, :] + tau * du0_dt(x)
+        u[1, :] = u[0, :] + tau * psi2(x)
     else:  # second_order
         # Второй порядок: используем фиктивный слой u^{-1}
         # u_t ≈ (u^1 - u^{-1})/(2tau) = du0_dt
@@ -69,10 +72,10 @@ def explicit_cross_scheme(Nx, Nt, bc_approx='two_point_first', du_approx='first_
             # Правая часть уравнения при n=0
             rhs = (a**2 * tau**2 / h**2) * (u[0, i+1] - 2*u[0, i] + u[0, i-1])
             # Из уравнения: u[1,i] - 2u[0,i] + u[-1,i] = rhs
-            # u[-1,i] = u[1,i] - 2tau*du0_dt(x[i])
-            # => u[1,i] - 2u[0,i] + u[1,i] - 2tau*du0_dt(x[i]) = rhs
-            # => 2u[1,i] = rhs + 2u[0,i] + 2tau*du0_dt(x[i])
-            u[1, i] = 0.5 * (rhs + 2*u[0, i] + 2*tau*du0_dt(x[i]))
+            # u[-1,i] = u[1,i] - 2tau*psi2(x[i])
+            # => u[1,i] - 2u[0,i] + u[1,i] - 2tau*psi2(x[i]) = rhs
+            # => 2u[1,i] = rhs + 2u[0,i] + 2tau*psi2(x[i])
+            u[1, i] = 0.5 * (rhs + 2*u[0, i] + 2*tau*psi2(x[i]))
         
         # Граничные условия для слоя t=1
         apply_boundary_conditions(u, 1, h, bc_approx)
@@ -122,76 +125,73 @@ def apply_boundary_conditions(u, time_layer, h, method):
 
 # Неявная схема (с использованием метода Кранка-Николсон)
 def implicit_scheme(Nx, Nt, bc_approx='two_point_first', du_approx='first_order'):
-    """
-    Неявная схема для волнового уравнения с весом sigma=0.5 (Кранк-Николсон).
-    """
     h = L / Nx
     tau = T / Nt
-    
+    sigma = (a * tau / h)**2
     x = np.linspace(0, L, Nx + 1)
-    t = np.linspace(0, T, Nt + 1)
-    
     u = np.zeros((Nt + 1, Nx + 1))
-    u[0, :] = u0(x)
+    u[0, :] = psi1(x)
     
-    # Обработка второго начального условия
+    # Первый слой
     if du_approx == 'first_order':
-        u[1, :] = u[0, :] + tau * du0_dt(x)
-    else:
-        for i in range(1, Nx):
-            u[1, i] = (u[0, i] + tau * du0_dt(x[i]) + 
-                      0.5 * a**2 * tau**2 / h**2 * (u[0, i+1] - 2*u[0, i] + u[0, i-1]))
+        u[1, :] = u[0, :] + tau * psi2(x)
+    elif du_approx == 'second_order':
+        u[1, :] = u[0, :] + tau * psi2(x) + (tau**2 / 2.0) * a**2 * psi1_xx(x)
     
-    # Граничные условия для первого шага
+    # Применить граничные условия к первому слою (если нужно, но в неявной они встроены в матрицу для последующих)
     apply_boundary_conditions(u, 1, h, bc_approx)
+    
+    # Построение матрицы A
+    A = np.zeros((Nx + 1, Nx + 1))
+    for i in range(1, Nx):
+        A[i, i-1] = -sigma / 2
+        A[i, i] = 1 + sigma
+        A[i, i+1] = -sigma / 2
+    
+    is_two_point_second = (bc_approx == 'two_point_second')
+    
+    if bc_approx == 'two_point_first':
+        A[0, 0] = 1 + h
+        A[0, 1] = -1
+        A[Nx, Nx-1] = 1
+        A[Nx, Nx] = -(1 - h)
+    elif bc_approx == 'three_point_second' or is_two_point_second:  # Для three_point
+        A[0, 0] = 3 + 2 * h
+        A[0, 1] = -4
+        A[0, 2] = 1
+        A[Nx, Nx-2] = 1
+        A[Nx, Nx-1] = -4
+        A[Nx, Nx] = 3 - 2 * h
+    if is_two_point_second:
+        # Перезаписать для two_point_second
+        A[0, :] = 0
+        A[0, 0] = 1 + sigma * (1 + h)
+        A[0, 1] = -sigma
+        A[Nx, :] = 0
+        A[Nx, Nx-1] = -sigma
+        A[Nx, Nx] = 1 + sigma * (1 - h)
     
     # Основной цикл
     for n in range(1, Nt):
-        N = Nx + 1
-        A = np.zeros((N, N))
-        b = np.zeros(N)
-        
-        # coeff = a²τ²/(2h²) для диагонали и правой части
-        coeff = 0.5 * a**2 * tau**2 / h**2  # σ = 0.5
-        
-        # Уравнение для внутренних точек
+        b = np.zeros(Nx + 1)
         for i in range(1, Nx):
-            A[i, i-1] = -0.5 * coeff  # или просто -a²τ²/(4h²)
-            A[i, i] = 1 + coeff       # было 1 + 2*coeff
-            A[i, i+1] = -0.5 * coeff
-            
-            # Правая часть ИСПРАВЛЕНА:
-            b[i] = (2*u[n, i] - u[n-1, i] + 
-                    0.5 * coeff * (u[n-1, i+1] - 2*u[n-1, i] + u[n-1, i-1]))
+            b[i] = 2 * u[n, i] - u[n-1, i] + (sigma / 2) * (u[n-1, i-1] - 2 * u[n-1, i] + u[n-1, i+1])
         
-        if bc_approx == 'two_point_first':
-            # Левая: (u_1 - u_0)/h - u_0 = 0
-            A[0, 0] = -1 - h
-            A[0, 1] = 1
+        if bc_approx in ['two_point_first', 'three_point_second']:
             b[0] = 0
-            
-            # Правая: (u_N - u_{N-1})/h - u_N = 0
-            A[N-1, N-1] = 1 - h
-            A[N-1, N-2] = -1
-            b[N-1] = 0
-            
-        elif bc_approx == 'three_point_second':
-            # Левая: (-3u_0 + 4u_1 - u_2)/(2h) - u_0 = 0
-            A[0, 0] = -3 - 2*h 
-            A[0, 1] = 4
-            A[0, 2] = -1
-            b[0] = 0
-            
-            # Правая: (3u_N - 4u_{N-1} + u_{N-2})/(2h) - u_N = 0
-            A[N-1, N-1] = 3 - 2*h
-            A[N-1, N-2] = -4
-            A[N-1, N-3] = 1
-            b[N-1] = 0
+            b[Nx] = 0
+        if is_two_point_second:
+            # Special b for boundaries
+            # Left
+            delta_nm1_0 = (2 * u[n-1, 1] - 2 * (1 + h) * u[n-1, 0])
+            b[0] = 2 * u[n, 0] - u[n-1, 0] + (sigma / 2) * delta_nm1_0
+            # Right
+            delta_nm1_N = (2 * u[n-1, Nx-1] - 2 * (1 - h) * u[n-1, Nx])
+            b[Nx] = 2 * u[n, Nx] - u[n-1, Nx] + (sigma / 2) * delta_nm1_N
         
-        # Решение системы
         u[n+1, :] = np.linalg.solve(A, b)
     
-    # Погрешность
+    # Погрешности
     u_analytical = analytical_solution(x, T)
     error_max = np.max(np.abs(u[-1, :] - u_analytical))
     error_l2 = np.sqrt(h * np.sum((u[-1, :] - u_analytical)**2))
@@ -303,7 +303,7 @@ def main():
     # 2. Неявная схема
     print("\n\n2. Неявная схема")
     
-    for bc_method in bc_methods[:2]:  # тестируем только два метода для экономии времени
+    for bc_method in bc_methods:  # Теперь тестируем все методы
         for du_method in du_methods:
             print(f"\nГраничные: {bc_method}, Начальные: {du_method}")
             x, u, info = implicit_scheme(Nx, Nt, bc_method, du_method)
@@ -335,7 +335,7 @@ def main():
     print("\n\n4. Визуализация результатов")
     
     # Вычисляем решение для визуализации
-    Nx_viz = 300
+    Nx_viz = 400
     Nt_viz = 400
     x, u_explicit, info_exp = explicit_cross_scheme(Nx_viz, Nt_viz, 'three_point_second', 'second_order')
     x, u_implicit, info_imp = implicit_scheme(Nx_viz, Nt_viz, 'three_point_second', 'second_order')
